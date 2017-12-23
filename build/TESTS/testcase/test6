@@ -1,0 +1,27 @@
+as principal admin password "admin" do
+   local x = { field1="joe" }
+   set y = []
+   append to y with x
+   return y
+***
+
+as principal admin password "admin" do
+   return x
+***
+
+
+as principal admin password "admin" do
+   return y
+***
+
+as principal admin password "admin" do
+   local x = { field1="joe" }
+   local x = "hello"
+   return x
+***
+
+as principal admin password "admin" do
+   set x = { field1="joe" }
+   local x = "hello"
+   return x
+***

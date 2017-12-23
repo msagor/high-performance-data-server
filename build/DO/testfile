@@ -1,0 +1,13 @@
+as principal admin password "admin" do
+    default_del = asdf
+   return msg
+***
+as principal alice password "alices_password" do
+
+   return msg
+
+***
+as principal admin password "admin" do
+
+   return msg
+***

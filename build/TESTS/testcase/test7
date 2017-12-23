@@ -1,0 +1,40 @@
+as principal admin password "admin" do
+   create principal bob "bob"
+   create principal alice "alice"
+   set x = "x"
+   set y = "y"
+   set delegation x admin read -> alice
+   set delegation x admin write -> alice
+   set delegation x alice read -> bob
+   return x
+***
+
+
+as principal admin password "admin" do
+   set y = []\nappend to y with { x="10", y="10" }
+   set delegation x admin delegate -> alice
+   set delegation y admin delegate -> alice
+   set delegation y admin read -> alice
+   set delegation y admin append -> alice
+   delete delegation x admin read -> bob 
+   default delegator = alice
+   create principal charlie "charlie" 
+   return y
+***
+
+ 
+
+as principal alice password "alice" do
+   append to y with { x="0", y="100" }
+   return y
+***
+
+as principal bob password "bob" do
+   return x
+***
+
+as principal charlie password "charlie" do
+   append to y with "charlies"
+   append to y with x
+   return y
+***

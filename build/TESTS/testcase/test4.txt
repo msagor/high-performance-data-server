@@ -1,0 +1,23 @@
+as principal admin password "admin" do
+   set x = { f="alice", g="bob" }
+   set y = "another string"
+   set z = { f=x.f, g=y, h=x.g, i="constant" }
+   return z
+***
+
+as principal admin password "admin" do
+   set z = { f="hi", g="there" }
+   set x = { f=z, g="hello" }
+   return x
+***
+
+as principal admin password "admin" do
+   set z = { f="hi", g="there" }
+   return z.h
+***
+
+as principal admin password "admin" do
+   set x = { f="hello", g="there", h="my", f="friend" }
+   return x
+***
+

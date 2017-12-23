@@ -1,0 +1,13 @@
+open terminal
+
+go to the main project directory by doing this - 
+	  $ cd DO
+          $ make
+	  $ cd ../
+
+then, go to the TESTS directry by doing this-
+	  $ cd TESTS 
+	
+youll see a lots of test cases there, to test each test cases, do this - 
+	  $ ./run.py ../DO/server test1.json
+

@@ -1,0 +1,293 @@
+#!/usr/bin/python
+import sys
+import socket
+import database
+import unit_tests
+import Interpreter #interpreter file
+from Commands import DB_Exception
+import json
+import copy
+import signal
+import os
+import time
+import re
+
+
+kill_signal = False
+
+def sigterm_handler(signal, frame):
+    # save the state here or do whatever you want
+    print 'sigterm handler'
+    raise DB_Exception('SIGTERM')
+
+
+
+
+print "given args: " + str(sys.argv)
+
+
+
+PERFORM_UNIT_TESTS = False
+
+
+if PERFORM_UNIT_TESTS:
+    # perform tests for database
+    unit_tests.UNIT_TESTS()
+
+
+
+###### PORT HANDLING
+if len(sys.argv) != 2 and len(sys.argv) != 3:
+    print "invalid argument length given. shutting down. "
+    print "usage: python server.py PORT [PASSWORD] "
+    exit(255)
+if not sys.argv[1].isdigit():
+    print "given port argument is not an integer. shutting down. "
+    exit(255)
+port = sys.argv[1]
+pattern = re.compile("[1-9][0-9]*")
+if not pattern.match(port):
+    exit(255)
+SRV_PORT = int(sys.argv[1])
+if SRV_PORT < 1024 or SRV_PORT > 65535:
+    print "given port is out of acceptable range. shutting down. "
+    exit(255)
+
+
+
+###### PASSWORD HANDLING
+SRV_PASSWORD = "\"admin\""
+if len(sys.argv) == 3:
+    #check password properties
+    pattern = re.compile("[A-Za-z0-9_,;\.?!-]{1,65535}")
+    if pattern.match(argv[2]):
+        SRV_PASSWORD = sys.argv[2]
+    else:
+        exit(255)
+    print SRV_PASSWORD
+
+print "RESULT: server port(" + str(SRV_PORT) + ") server password(" + SRV_PASSWORD + ")"
+
+
+###### INITIALIZE GLOBAL VARIABLE DATABASE
+VAR_DATABASE = database.VARIABLE_DB()
+
+
+###### INITIALIZE GLOBAL USER DATABASE, ADD ADMIN
+USER_DATABASE = database.USER_DB()
+USER_DATABASE.INIT_user("admin", "anyone", SRV_PASSWORD)
+USER_DATABASE.INIT_user("admin", "admin", SRV_PASSWORD)
+
+
+###### CONNECTION HANDLING FOR CLIENTS (RECV THE REQUESTED CODE TO EXECUTE)
+SOCKET = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+SOCKET.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+SRV_ADDRESS = ('localhost', SRV_PORT)
+SOCKET.bind(SRV_ADDRESS)
+
+print "starting server... please wait"
+
+SOCKET.listen(1)
+
+server_alive = True
+
+#Create, and build an interpreter to handle the incoming commands
+user_db = None
+global_program = ""
+signal.signal(signal.SIGTERM, sigterm_handler)
+
+def fetch_some_data(_socket):
+    while server_alive:
+            input_program = ''
+            _socket.settimeout(30.0)
+            data = _socket.recv(4096)
+
+            if data:
+                #print "GOT THE FOLLOWING INFORMATION:  \n|" + str(data) + "|"
+                #print str(data)
+                input_program += data
+                if '***\n' in input_program:
+                    return input_program
+                # if data == "***" or data == "***\n":
+                #     return input_program
+                #     break #TODO doesn't always find the end.
+                # else:
+                #     return input_program
+                #     break #TODO fix this logic, used for catting files of NC
+            # else:
+            #     print "No more data from " + str(CLIENT_ADDR)
+            #     break
+
+while True:
+    # wait for a connection
+    try:
+
+        input_program = ""
+        print "waiting for a connection... "
+        SRV_CONNECTION, CLIENT_ADDR = SOCKET.accept()
+        #SRV_CONNECTION.settimeout(30.0) # 30 second timeout
+        print SRV_CONNECTION
+
+        terminating_code = "***\n"
+
+        print "connection established from address " + str(CLIENT_ADDR)
+        input_program = fetch_some_data(SRV_CONNECTION)
+        # input_list = [] #list holds partial programs that weren't fully processed
+        # #input_program = global_program + input_program
+        # input_list = input_program.split('***')
+
+
+
+        # for i in input_list:
+        #     lst.append(i)
+        
+        # lst = lst[:-1]
+
+        # for n,i in enumerate(lst):
+        #     if i[0] = '\n':
+        #         lst[n] = lst[n][1:]
+
+
+
+
+        parsed_programs = []
+        parse_string = ""
+        program_list = [x for x in input_program.split("\n")]
+        clean_list = []
+        for i in program_list:
+
+            if i and i[0] and i[1] and i[0] == '/' and i[1] == '/':
+                pass
+            else:
+                clean_list.append(i)
+
+        program_list = clean_list
+        for i in program_list:
+            if i != '':
+                parse_string += i + '\n'
+                if i == '***':
+                    parsed_programs.append(parse_string)
+                    parse_string = ""
+
+
+        for i in program_list:
+            print i
+
+    #################################################
+    ########## PROCESS REQUEST INFORMATION HERE #####
+        incomplete_program_detect = False
+        if parse_string == "" or (parse_string[0] == '\n' and len(set([x for x in parse_string])) == 1):
+            # its a valid program
+            print "valid programs!"
+        else:
+            incomplete_program_detect = True
+        #if parse_string != "" or parse_string[0] == '\n' or len([x for x in parse_string]) != 1:
+
+        for i in parsed_programs:
+            # TODO check program length
+            print 'next program'
+            global_program = i
+            user_db_copy = copy.deepcopy(USER_DATABASE)
+            var_db_copy = copy.deepcopy(VAR_DATABASE)
+
+            command_interpreter = Interpreter.DB_Interpreter(user_db_copy,var_db_copy)
+            command_interpreter.build()
+
+            command_interpreter.input(i)
+            #print command_interpreter.user_db.user_db
+            print command_interpreter.print_tokens(i)
+            if command_interpreter.parse(i):
+                #program is in a valid format
+                print 'executing commands'
+
+                user_db ,var_db = command_interpreter.execute_commands()
+                #Get Status List:
+                status = command_interpreter.fetch_status_list()
+
+                status = status[1:]
+                #status = [x[0] for x in status] #UNCOMMENT WHEN DELETING WHAT IS BELOW
+
+                for s in status:
+                    #TODO Delete this it is only for debugging
+                    if isinstance(s,list):
+                        s = s[0]
+                    SRV_CONNECTION.send(s+'\n')
+
+
+                ##If there were no exceptions then change the states
+                if user_db:
+                    print "copying data"
+                    USER_DATABASE = user_db
+                    VAR_DATABASE = var_db
+
+                else:
+                    print "There was an error processing the input from the network.\n"
+
+        if incomplete_program_detect:
+            user_db_copy = {}
+            var_db_copy = {}
+
+            command_interpreter = Interpreter.DB_Interpreter(user_db_copy, var_db_copy)
+            command_interpreter.build()
+            # TODO fix timeout "break" in program read (seen above where programs delimited based on ***)
+            raise socket.timeout
+
+        SRV_CONNECTION.shutdown(socket.SHUT_RDWR)
+        SRV_CONNECTION.close()
+
+    except socket.timeout:
+        print "timeout exception occurred"
+        SRV_CONNECTION.send('{"status":"TIMEOUT"}\n')
+        #command_interpreter.refresh()
+        SRV_CONNECTION.shutdown(socket.SHUT_RDWR)
+        SRV_CONNECTION.close()
+        #raise DB_Exception("FAILED")
+    except KeyboardInterrupt:
+        #TODO close the server
+        print "\nkeyboard interrupt detected. exiting... "
+        exit(0)
+    #TODO: Make sure its a socket error we don't care about
+    except DB_Exception as err:
+        print "Got DB_Exception: %s\n"%(err.args)
+        user_db_copy = copy.deepcopy(USER_DATABASE) #roll back just in case something wonky happens
+        var_db_copy = copy.deepcopy(VAR_DATABASE) #roll back just in case something wonky happens
+        user_db = None
+        if err.args[0] == 'FAILED':
+            SRV_CONNECTION.send('{"status":"FAILED"}\n')
+            command_interpreter.refresh()
+            SRV_CONNECTION.shutdown(socket.SHUT_RDWR)
+            SRV_CONNECTION.close()
+            # server_alive = False
+        elif err.args[0] == 'DENIED':
+            SRV_CONNECTION.send('{"status":"DENIED"}\n')
+            command_interpreter.refresh()
+            SRV_CONNECTION.shutdown(socket.SHUT_RDWR)
+            SRV_CONNECTION.close()
+            # server_alive = False
+        elif err.args[0] == 'SIGTERM':
+            print 'Exiting "gracefully"'
+            try:
+                print SRV_CONNECTION
+                SRV_CONNECTION.shutdown(socket.SHUT_RDWR)
+                SRV_CONNECTION.close()
+            except:
+                pass
+            sys.exit(0)
+        else:
+            print err.args
+            parse_error = command_interpreter.parse_error
+            print "Got Parse Error:%s"%(parse_error)
+                #SRV_CONNECTION.send(parse_error + '\n')
+            #Probably a parser error
+            bad_program = command_interpreter.print_tokens(global_program)
+            for i in bad_program:
+                print i
+                #SRV_CONNECTION.send("%s"%(i)+'\n')
+            #SRV_CONNECTION.send('{"status":"FAILED"}\n')
+            SRV_CONNECTION.shutdown(socket.SHUT_RDWR)
+            SRV_CONNECTION.close()
+            # server_alive = False
+        #TODO: Proper error handeling if needed...(Deined vs Failed..)
+
+print "server exiting. have a good day. "
+sys.exit(0)
